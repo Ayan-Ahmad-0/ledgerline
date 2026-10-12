@@ -87,8 +87,8 @@
 
           <div class="metric-box">
             <div class="metric-label">Math Consistency Rule</div>
-            <div id="math-status" style="font-weight: 600; color: var(--green); font-size: 0.95rem;">
-              ✓ Rule: SUM(qty * unit_price) == subtotal (±1.00 unit)
+            <div id="math-status" style="font-weight: 600; color: var(--green); font-size: 0.875rem;">
+              ✓ Rule: SUM(qty × unit_price) ≡ subtotal (±1.00 unit)
             </div>
           </div>
         </div>
@@ -101,7 +101,7 @@
           <span class="badge badge-cache" id="idempotency-badge">0 Duplicate Calls on Re-Run</span>
         </div>
         
-        <div class="grid-4" style="margin-bottom: 1.5rem;">
+        <div class="grid-3" style="margin-bottom: 1rem;">
           <div class="metric-box">
             <div class="metric-label">Vendor Name</div>
             <div id="res-vendor" style="font-weight: 700; color: #fff;">-</div>
@@ -114,9 +114,20 @@
             <div class="metric-label">Invoice Date</div>
             <div id="res-date" style="font-family: var(--font-mono); color: #fff;">-</div>
           </div>
+        </div>
+
+        <div class="grid-3" style="margin-bottom: 1.5rem;">
+          <div class="metric-box">
+            <div class="metric-label">Subtotal</div>
+            <div id="res-subtotal" style="font-size: 1.3rem; font-weight: 700; color: #fff;">-</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Tax Amount</div>
+            <div id="res-tax" style="font-size: 1.3rem; font-weight: 700; color: #fff;">-</div>
+          </div>
           <div class="metric-box">
             <div class="metric-label">Total Amount</div>
-            <div id="res-total" style="font-size: 1.4rem; font-weight: 800; color: var(--cyan);">-</div>
+            <div id="res-total" style="font-size: 1.4rem; font-weight: 800; color: var(--accent);">-</div>
           </div>
         </div>
 
@@ -147,7 +158,8 @@
           <button class="btn-primary" onclick="leaseNextItem()">Lease Next Item (SKIP LOCKED)</button>
         </div>
         <div class="card-subtitle">
-          Acquires row-level locks safely using <code>SELECT FOR UPDATE SKIP LOCKED</code>. Enforces optimistic concurrency (returns HTTP 409 diff on collision).
+          <strong>Purpose:</strong> Human-in-the-loop review desk. When a receipt has low OCR confidence or conflicting numbers, it routes here.
+          Auditors acquire row-level locks with <code>SELECT FOR UPDATE SKIP LOCKED</code> to prevent duplicate work, while version numbers prevent write collisions (HTTP 409).
         </div>
 
         <div id="lease-active-box" style="display: none; margin-bottom: 1.5rem;" class="metric-box">
@@ -163,15 +175,12 @@
 
           <div class="grid-2" style="margin-bottom: 1rem;">
             <div>
-              <div class="metric-label">Proposed Server State</div>
-              <pre id="proposed-json">{ "total": "100.00" }</pre>
+              <div class="metric-label">Extracted / Proposed Values</div>
+              <pre id="proposed-json">{}</pre>
             </div>
             <div>
-              <div class="metric-label">Human Correction Input</div>
-              <textarea id="correction-json" style="width: 100%; height: 180px; background: #030712; border: 1px solid var(--border); color: #fff; border-radius: 8px; padding: 0.75rem; font-family: var(--font-mono); font-size: 0.85rem;">{
-  "total": "105.00",
-  "notes": "Verified against receipt"
-}</textarea>
+              <div class="metric-label">Auditor Correction Input (JSON)</div>
+              <textarea id="correction-json"></textarea>
             </div>
           </div>
 
@@ -182,7 +191,7 @@
         </div>
 
         <div id="review-status-msg" style="color: var(--text-muted); font-size: 0.875rem;">
-          No active review lease held. Click "Lease Next Item" to acquire one.
+          No active review lease held. All uploaded documents currently meet quality gates. Click "Lease Next Item" to audit.
         </div>
       </div>
     </div>
@@ -243,7 +252,7 @@
           </div>
           <div class="metric-box">
             <div class="metric-label">Canary Max Allowed Drop</div>
-            <div class="metric-value" style="color: var(--cyan);">2.0 pts</div>
+            <div class="metric-value" style="color: var(--teal);">2.0 pts</div>
             <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">50-Doc Gate Slice Guard</div>
           </div>
         </div>

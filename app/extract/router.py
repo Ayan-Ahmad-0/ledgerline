@@ -76,18 +76,25 @@ class ExtractionRouter:
 
         # Log metrics to CostMeter table if session provided
         if session is not None:
-            for m in all_metrics:
-                meter_record = CostMeter(
-                    document_id=document_id,
-                    page_id=None,
-                    routing_path=m.routing_path,
-                    input_tokens=m.input_tokens,
-                    output_tokens=m.output_tokens,
-                    estimated_cost_usd=m.estimated_cost_usd,
-                    latency_ms=m.latency_ms,
-                )
-                session.add(meter_record)
-            await session.commit()
+            try:
+                for m in all_metrics:
+                    meter_record = CostMeter(
+                        document_id=document_id,
+                        page_id=None,
+                        routing_path=m.routing_path,
+                        input_tokens=m.input_tokens,
+                        output_tokens=m.output_tokens,
+                        estimated_cost_usd=m.estimated_cost_usd,
+                        latency_ms=m.latency_ms,
+                    )
+                    session.add(meter_record)
+                await session.commit()
+            except Exception as e:
+                logger.warning(f"Could not record cost meter to database: {e}")
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
 
         return result, all_metrics
 

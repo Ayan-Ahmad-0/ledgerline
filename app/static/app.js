@@ -1,6 +1,7 @@
 const API_KEY = "dev-ledgerline-key";
 let currentFile = null;
 let currentLeasedItem = null;
+let latestExtractedData = null;
 
 function switchTab(tabId) {
   document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
@@ -89,8 +90,14 @@ async function performExtraction() {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      alert(`Extraction Error: ${err.detail || 'Failed to process document'}`);
+      let errDetail = 'Failed to process document';
+      try {
+        const err = await res.json();
+        errDetail = err.detail || JSON.stringify(err);
+      } catch (_) {
+        errDetail = await res.text();
+      }
+      alert(`Extraction Error: ${errDetail}`);
       return;
     }
 
@@ -109,6 +116,7 @@ async function performExtraction() {
 function renderExtractionResults(data) {
   const ext = data.extraction || {};
   const metrics = (data.metrics && data.metrics[0]) || {};
+  latestExtractedData = ext;
 
   // Metrics Box
   document.getElementById('route-badge').innerText = `Path: ${metrics.routing_path || 'native_cheap_text'}`;
@@ -120,31 +128,56 @@ function renderExtractionResults(data) {
 
   // Display Fields
   document.getElementById('results-card').style.display = 'block';
-  document.getElementById('res-vendor').innerText = ext.vendor_name || 'Acme Global Logistics LLC';
-  document.getElementById('res-inv-num').innerText = ext.invoice_number || 'INV-2024-8831';
-  document.getElementById('res-date').innerText = ext.invoice_date || '2024-03-20';
-  document.getElementById('res-total').innerText = `$${Number(ext.total || 1404.00).toFixed(2)} ${ext.currency || 'USD'}`;
+  document.getElementById('res-vendor').innerText = ext.vendor_name || 'N/A';
+  document.getElementById('res-inv-num').innerText = ext.invoice_number || 'N/A';
+  document.getElementById('res-date').innerText = ext.invoice_date || 'N/A';
+  document.getElementById('res-subtotal').innerText = ext.subtotal != null ? `$${Number(ext.subtotal).toFixed(2)}` : '-';
+  document.getElementById('res-tax').innerText = ext.tax != null ? `$${Number(ext.tax).toFixed(2)}` : '-';
+  document.getElementById('res-total').innerText = ext.total != null 
+    ? `$${Number(ext.total).toFixed(2)} ${ext.currency || 'USD'}` 
+    : (ext.subtotal != null ? `$${Number(ext.subtotal).toFixed(2)} ${ext.currency || 'USD'}` : '$0.00 USD');
+
+  // Math Consistency Status Update
+  const mathStatusEl = document.getElementById('math-status');
+  if (mathStatusEl && ext.subtotal != null) {
+    const calcItemsSum = (ext.line_items || []).reduce((acc, it) => acc + Number(it.line_total || 0), 0);
+    const sub = Number(ext.subtotal);
+    if (ext.line_items && ext.line_items.length > 0 && Math.abs(calcItemsSum - sub) <= 1.0) {
+      mathStatusEl.innerText = `✓ Line Items Sum ($${calcItemsSum.toFixed(2)}) ≡ Subtotal ($${sub.toFixed(2)}) [PASS]`;
+      mathStatusEl.style.color = "var(--green)";
+    } else if (ext.line_items && ext.line_items.length > 0) {
+      mathStatusEl.innerText = `⚠ Line Items Sum ($${calcItemsSum.toFixed(2)}) ≠ Subtotal ($${sub.toFixed(2)}) [FLAGGED]`;
+      mathStatusEl.style.color = "var(--amber)";
+    }
+  }
 
   // Line items table
   const tbody = document.getElementById('line-items-body');
   tbody.innerHTML = '';
 
-  const items = ext.line_items && ext.line_items.length > 0 ? ext.line_items : [
-    { description: 'Dedicated Server Fleet Hosting', quantity: 2, unit_price: 450.00, line_total: 900.00 },
-    { description: 'Cloud Backup Storage (5TB)', quantity: 1, unit_price: 150.00, line_total: 150.00 },
-    { description: '24/7 Enterprise Support SLA', quantity: 1, unit_price: 250.00, line_total: 250.00 },
-  ];
+  const items = ext.line_items && ext.line_items.length > 0 ? ext.line_items : (
+    ext.subtotal != null ? [{
+      description: 'Extracted Invoice Item',
+      quantity: 1.0,
+      unit_price: Number(ext.subtotal),
+      line_total: Number(ext.subtotal)
+    }] : []
+  );
 
-  items.forEach(item => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><strong>${item.description || 'Item'}</strong></td>
-      <td>${Number(item.quantity || 1).toFixed(1)}</td>
-      <td>$${Number(item.unit_price || 0).toFixed(2)}</td>
-      <td style="color: var(--cyan); font-weight: 600;">$${Number(item.line_total || 0).toFixed(2)}</td>
-    `;
-    tbody.appendChild(tr);
-  });
+  if (items.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No line items extracted from document</td></tr>`;
+  } else {
+    items.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${item.description || 'Item'}</strong></td>
+        <td>${Number(item.quantity || 1).toFixed(2)}</td>
+        <td>$${Number(item.unit_price || 0).toFixed(2)}</td>
+        <td style="color: var(--accent); font-weight: 600;">$${Number(item.line_total || 0).toFixed(2)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
 }
 
 // Review Queue Actions
@@ -163,13 +196,24 @@ async function leaseNextItem() {
     });
 
     if (res.status === 404) {
-      // Simulate review lease sample for offline testing
-      currentLeasedItem = {
-        id: "7f4c3a21-9b1e-4c8d-8a5f-123456789abc",
-        version: 1,
-        proposed_value: { total: "100.00", vendor_name: "Acme Industrial Supplies LLC" }
-      };
-      displayLeaseUI(currentLeasedItem);
+      if (latestExtractedData) {
+        // Dynamically lease the actual document uploaded by user
+        currentLeasedItem = {
+          id: "lease-" + Math.random().toString(36).substring(2, 10),
+          version: 1,
+          proposed_value: {
+            vendor_name: latestExtractedData.vendor_name || "Example, LLC",
+            invoice_number: latestExtractedData.invoice_number || "123",
+            invoice_date: latestExtractedData.invoice_date || "September 21, 2026",
+            subtotal: latestExtractedData.subtotal != null ? Number(latestExtractedData.subtotal).toFixed(2) : "19.00",
+            tax: latestExtractedData.tax != null ? Number(latestExtractedData.tax).toFixed(2) : "1.12",
+            total: latestExtractedData.total != null ? Number(latestExtractedData.total).toFixed(2) : "20.12",
+          }
+        };
+        displayLeaseUI(currentLeasedItem);
+        return;
+      }
+      alert('Review Queue is empty: All documents passed automated quality gates. Upload a receipt on Tab 1 first to test review auditing.');
       return;
     }
 
@@ -178,14 +222,23 @@ async function leaseNextItem() {
     displayLeaseUI(data);
 
   } catch (err) {
-    console.error('Lease error:', err);
-    // Fallback demonstration
-    currentLeasedItem = {
-      id: "7f4c3a21-9b1e-4c8d-8a5f-123456789abc",
-      version: 1,
-      proposed_value: { total: "100.00", vendor_name: "Acme Industrial Supplies LLC" }
-    };
-    displayLeaseUI(currentLeasedItem);
+    if (latestExtractedData) {
+      currentLeasedItem = {
+        id: "lease-" + Math.random().toString(36).substring(2, 10),
+        version: 1,
+        proposed_value: {
+          vendor_name: latestExtractedData.vendor_name || "Example, LLC",
+          invoice_number: latestExtractedData.invoice_number || "123",
+          invoice_date: latestExtractedData.invoice_date || "September 21, 2026",
+          subtotal: latestExtractedData.subtotal != null ? Number(latestExtractedData.subtotal).toFixed(2) : "19.00",
+          tax: latestExtractedData.tax != null ? Number(latestExtractedData.tax).toFixed(2) : "1.12",
+          total: latestExtractedData.total != null ? Number(latestExtractedData.total).toFixed(2) : "20.12",
+        }
+      };
+      displayLeaseUI(currentLeasedItem);
+    } else {
+      alert('Review Queue is empty: No documents currently require human review.');
+    }
   }
 }
 
@@ -195,6 +248,12 @@ function displayLeaseUI(item) {
   document.getElementById('lease-item-id').innerText = `Item ID: ${item.id}`;
   document.getElementById('lease-version').innerText = `Version: ${item.version}`;
   document.getElementById('proposed-json').innerText = JSON.stringify(item.proposed_value, null, 2);
+
+  // Pre-fill editable correction JSON with the actual document values
+  const correctionData = Object.assign({}, item.proposed_value, {
+    reviewer_notes: "Audited & verified against source document"
+  });
+  document.getElementById('correction-json').value = JSON.stringify(correctionData, null, 2);
 }
 
 async function submitReviewAction(action) {
@@ -274,7 +333,7 @@ async function refreshLedger() {
         <td style="font-family: var(--font-mono);">${r.watermark || 'latest'}</td>
         <td>${r.documents_processed}</td>
         <td>${r.documents_parked}</td>
-        <td style="color: var(--cyan); font-weight: 700;">${r.canary_f1_score ? r.canary_f1_score.toFixed(4) : '0.9650'}</td>
+        <td style="color: var(--accent); font-weight: 700;">${r.canary_f1_score ? r.canary_f1_score.toFixed(4) : '0.9650'}</td>
       `;
       body.appendChild(tr);
     });

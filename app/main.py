@@ -21,6 +21,13 @@ app = FastAPI(
     version="0.1.0",
 )
 
+
+@app.on_event("startup")
+async def on_startup():
+    from app.db.session import init_db
+    await init_db()
+
+
 # Register middlewares
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(RequestMetricsMiddleware)

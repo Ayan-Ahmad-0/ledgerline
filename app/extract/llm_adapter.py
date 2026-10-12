@@ -195,31 +195,132 @@ class LLMAdapter:
         result = ExtractionResult(currency="USD")
         lines = [line.strip() for line in text.split("\n") if line.strip()]
 
-        for line in lines:
-            if "total:" in line.lower() or "total " in line.lower():
-                nums = re.findall(r"\d+\.\d{2}", line)
-                if nums:
-                    result.total = Decimal(nums[-1])
-                    result.raw_token_probabilities["total"] = 0.94
-            elif "subtotal:" in line.lower() or "subtotal " in line.lower():
-                nums = re.findall(r"\d+\.\d{2}", line)
-                if nums:
-                    result.subtotal = Decimal(nums[-1])
-                    result.raw_token_probabilities["subtotal"] = 0.96
-            elif "tax" in line.lower():
-                nums = re.findall(r"\d+\.\d{2}", line)
-                if nums:
-                    result.tax = Decimal(nums[-1])
-                    result.raw_token_probabilities["tax"] = 0.92
-            elif "invoice #" in line.lower() or "inv-" in line.lower():
-                m = re.search(r"(INV[-\w]+)", line, re.IGNORECASE)
-                if m:
-                    result.invoice_number = m.group(1)
-                    result.raw_token_probabilities["invoice_number"] = 0.98
+        for i, line in enumerate(lines):
+            l_lower = line.lower()
+            if any(k in l_lower for k in ["payment is due", "subject to fees", "within 30 days", "thanks for choosing"]):
+                continue
 
-        if lines:
-            result.vendor_name = lines[0]
-            result.raw_token_probabilities["vendor_name"] = 0.91
+            # Check subtotal before total!
+            if re.search(r"\bsub\s*-?\s*total\b", l_lower):
+                nums = re.findall(r"[\d,]+\.\d{2}", line)
+                if nums:
+                    result.subtotal = Decimal(nums[-1].replace(",", ""))
+                    result.raw_token_probabilities["subtotal"] = 0.96
+            elif "total" in l_lower and not any(k in l_lower for k in ["subtotal", "sub total", "sub-total"]):
+                nums = re.findall(r"[\d,]+\.\d{2}", line)
+                if nums:
+                    result.total = Decimal(nums[-1].replace(",", ""))
+                    result.raw_token_probabilities["total"] = 0.94
+            elif re.search(r"\btax\b", l_lower):
+                nums = re.findall(r"[\d,]+\.\d{2}", line)
+                if nums:
+                    result.tax = Decimal(nums[-1].replace(",", ""))
+                    result.raw_token_probabilities["tax"] = 0.92
+
+            # Invoice / Receipt / Order Number (checked independently from totals)
+            if not result.invoice_number and not any(k in l_lower for k in ["date", "total", "tax", "due", "balance"]):
+                m = re.search(r"\b(?:invoice|receipt|order|bill)\s+(?:number|no\.?|num|#)\s*[:#\s]?\s*([A-Za-z0-9\-_]+)", line, re.IGNORECASE)
+                if not m:
+                    m = re.search(r"\b(?:invoice|receipt|order|bill)\s*[:#]\s*([A-Za-z0-9\-_]+)", line, re.IGNORECASE)
+                if not m:
+                    m = re.search(r"\b(INV[-_][A-Za-z0-9]+|INV\d+)\b", line, re.IGNORECASE)
+                if m:
+                    val = m.group(1).strip()
+                    if val.lower() not in ["number", "no", "date", "due", "paid", "details"]:
+                        result.invoice_number = val
+                        result.raw_token_probabilities["invoice_number"] = 0.98
+
+            # Date (checked independently)
+            if "date" in l_lower or "paid" in l_lower:
+                m = re.search(r"(?:invoice\s*date|date\s*paid|paid\s*on|receipt\s*date|date)[:\s]+([A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4})", line, re.IGNORECASE)
+                if m and "due" not in l_lower:
+                    if not result.invoice_date or "invoice" in l_lower or "paid" in l_lower:
+                        result.invoice_date = m.group(1).strip()
+                        result.raw_token_probabilities["invoice_date"] = 0.95
+
+        # Extract vendor name from "From:" block, legal suffix line, or clean top line
+        for i, line in enumerate(lines):
+            if line.lower() == "from:" and i + 1 < len(lines):
+                result.vendor_name = lines[i + 1]
+                result.raw_token_probabilities["vendor_name"] = 0.93
+                break
+
+        if not result.vendor_name:
+            for line in lines[:8]:
+                l_low = line.lower()
+                if any(l_low.endswith(sfx) or f"{sfx}," in l_low or f"{sfx}." in l_low or f", {sfx}" in l_low for sfx in ["llc", "inc", "corp", "ltd", "gmbh", "co"]):
+                    result.vendor_name = line
+                    result.raw_token_probabilities["vendor_name"] = 0.94
+                    break
+
+        if not result.vendor_name and lines:
+            for line in lines[:5]:
+                if not any(k in line.lower() for k in ["receipt", "invoice", "payment", "page", "due", "thanks", "date", "order"]):
+                    result.vendor_name = line
+                    result.raw_token_probabilities["vendor_name"] = 0.91
+                    break
+
+        # Extract line items:
+        extracted_items = []
+
+        # Format A: "Subscription $19.00 1 $19.00"
+        for line in lines:
+            m = re.match(r"^([A-Za-z][A-Za-z0-9\s\-_]+?)\s+\$?([\d,]+\.\d{2})\s+(\d+(?:\.\d+)?)\s+\$?([\d,]+\.\d{2})$", line)
+            if m and not any(k in line.lower() for k in ["total", "subtotal", "tax", "balance"]):
+                desc = m.group(1).strip()
+                unit_p = Decimal(m.group(2).replace(",", ""))
+                qty = Decimal(m.group(3))
+                amt = Decimal(m.group(4).replace(",", ""))
+                extracted_items.append({
+                    "description": desc,
+                    "quantity": float(qty),
+                    "unit_price": float(unit_p),
+                    "line_total": float(amt)
+                })
+
+        # Format B: "1.00 Web Design" + "$85.00"
+        if not extracted_items:
+            for i, line in enumerate(lines):
+                qty_m = re.match(r"^(\d+(?:\.\d+)?)\s+([A-Za-z][A-Za-z0-9\s\-_]+)$", line)
+                if qty_m and not any(k in line.lower() for k in ["hrs/qty", "sub", "total", "tax", "order", "page", "invoice"]):
+                    qty = Decimal(qty_m.group(1))
+                    desc = qty_m.group(2).strip()
+                    for j in range(i + 1, min(i + 3, len(lines))):
+                        nums = re.findall(r"[\d,]+\.\d{2}", lines[j])
+                        if nums and not any(k in lines[j].lower() for k in ["sub", "total", "tax"]):
+                            amt = Decimal(nums[-1].replace(",", ""))
+                            unit_p = Decimal(nums[0].replace(",", "")) if len(nums) > 1 else amt / qty
+                            extracted_items.append({
+                                "description": desc,
+                                "quantity": float(qty),
+                                "unit_price": float(unit_p),
+                                "line_total": float(amt)
+                            })
+                            break
+
+        # Format C: Pipe-delimited "Dedicated Server | 2 | $450.00 | $900.00"
+        if not extracted_items:
+            for line in lines:
+                if "|" in line:
+                    parts = [p.strip() for p in line.split("|")]
+                    if len(parts) >= 4 and not any(k in parts[0].lower() for k in ["item", "description"]):
+                        desc = parts[0]
+                        qty_nums = re.findall(r"\d+(?:\.\d+)?", parts[1])
+                        rate_nums = re.findall(r"[\d,]+\.\d{2}", parts[2])
+                        amt_nums = re.findall(r"[\d,]+\.\d{2}", parts[3])
+                        if qty_nums and amt_nums:
+                            qty = Decimal(qty_nums[0])
+                            amt = Decimal(amt_nums[0].replace(",", ""))
+                            unit_p = Decimal(rate_nums[0].replace(",", "")) if rate_nums else amt / qty
+                            extracted_items.append({
+                                "description": desc,
+                                "quantity": float(qty),
+                                "unit_price": float(unit_p),
+                                "line_total": float(amt)
+                            })
+
+        if extracted_items:
+            result.line_items = extracted_items
 
         return result
 

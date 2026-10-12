@@ -18,7 +18,8 @@ from sqlalchemy import (
     select,
     update,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.types import TypeDecorator, CHAR, JSON
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB as PG_JSONB
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     create_async_engine,
@@ -30,6 +31,59 @@ from sqlalchemy.orm import (
 )
 
 from app.core.config import get_settings
+
+
+class GUID(TypeDecorator):
+    """Platform-independent GUID type.
+    Uses PostgreSQL's UUID type, otherwise uses CHAR(36).
+    """
+    impl = CHAR(36)
+    cache_ok = True
+
+    def __init__(self, as_uuid=True, *args, **kwargs):
+        self.as_uuid = as_uuid
+        super().__init__(*args, **kwargs)
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PG_UUID(as_uuid=self.as_uuid))
+        else:
+            return dialect.type_descriptor(CHAR(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        if isinstance(value, uuid.UUID):
+            return value
+        try:
+            return uuid.UUID(str(value))
+        except (ValueError, TypeError):
+            return value
+
+
+UUID = GUID
+
+
+class UniversalJSON(TypeDecorator):
+    """Platform-independent JSON type.
+    Uses PostgreSQL's JSONB type, otherwise standard JSON.
+    """
+    impl = JSON
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PG_JSONB())
+        else:
+            return dialect.type_descriptor(JSON())
+
+
+JSONB = UniversalJSON
 
 Base = declarative_base()
 
@@ -336,18 +390,40 @@ def get_engine():
     global _engine
     if _engine is None:
         settings = get_settings()
+        # Check if DATABASE_URL uses postgresql+asyncpg and asyncpg is importable
+        use_sqlite = False
         try:
-            _engine = create_async_engine(
-                settings.DATABASE_URL,
-                pool_size=settings.DB_POOL_SIZE,
-                max_overflow=settings.DB_MAX_OVERFLOW,
-                pool_timeout=settings.DB_POOL_TIMEOUT,
-                echo=settings.DEBUG,
-            )
-        except Exception:
-            # Fallback to in-memory async SQLite if Postgres driver not installed in current environment
-            _engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=settings.DEBUG)
+            import asyncpg  # noqa
+        except ImportError:
+            use_sqlite = True
+
+        if not use_sqlite:
+            try:
+                _engine = create_async_engine(
+                    settings.DATABASE_URL,
+                    pool_size=settings.DB_POOL_SIZE,
+                    max_overflow=settings.DB_MAX_OVERFLOW,
+                    pool_timeout=settings.DB_POOL_TIMEOUT,
+                    echo=settings.DEBUG,
+                )
+            except Exception:
+                use_sqlite = True
+
+        if use_sqlite or _engine is None:
+            # Fallback to local SQLite file for seamless offline/local development
+            _engine = create_async_engine("sqlite+aiosqlite:///ledgerline_dev.db", echo=settings.DEBUG)
     return _engine
+
+
+async def init_db():
+    """Initializes tables in database if running on SQLite or fresh instance."""
+    engine = get_engine()
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Database table initialization warning: {e}")
 
 
 def get_session_factory():
@@ -372,3 +448,4 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
