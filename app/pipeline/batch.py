@@ -160,6 +160,7 @@ async def run_batch_pipeline(
     async with session_factory() as session:
         # Start run ledger
         run_record = await start_pipeline_run(session, watermark=watermark)
+        run_id = run_record.run_id
         baseline_f1 = await get_rolling_baseline_f1(session)
 
         # 1. Canary slice evaluation (first 50 documents or available subset)
@@ -181,11 +182,11 @@ async def run_batch_pipeline(
                 max_drop_points=settings.CANARY_MAX_F1_DROP,
                 raise_on_failure=True,
             )
-            await record_canary_evaluation(session, run_record.run_id, canary_res.canary_f1, baseline_f1)
+            await record_canary_evaluation(session, run_id, canary_res.canary_f1, baseline_f1)
         except CanaryGateFailureError as c_err:
             await complete_pipeline_run(
                 session=session,
-                run_id=run_record.run_id,
+                run_id=run_id,
                 status="canary_failed",
                 documents_processed=0,
                 documents_parked=0,
@@ -207,14 +208,14 @@ async def run_batch_pipeline(
         # Finalize run
         await complete_pipeline_run(
             session=session,
-            run_id=run_record.run_id,
+            run_id=run_id,
             status="success",
             documents_processed=processed_count,
             documents_parked=parked_count,
         )
 
         return {
-            "run_id": str(run_record.run_id),
+            "run_id": str(run_id),
             "status": "success",
             "documents_processed": processed_count,
             "documents_parked": parked_count,

@@ -342,3 +342,42 @@ async function refreshLedger() {
     console.error('Failed to load ledger:', err);
   }
 }
+
+// Trigger batch run through pipeline spine
+async function triggerBatchRun() {
+  const btn = document.getElementById('btn-run-batch');
+  const originalText = btn ? btn.innerText : 'Run Batch Pipeline';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Processing Batch...';
+  }
+
+  try {
+    const res = await fetch('/api/v1/ledger/trigger-batch', {
+      method: 'POST',
+      headers: { 'X-API-Key': API_KEY }
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      alert('Batch run failed: ' + (err.detail || 'Unknown error'));
+      return;
+    }
+
+    const data = await res.json();
+    await refreshLedger();
+    alert(`Batch Run Complete!\n\nRun ID: ${data.run_id}\nStatus: ${data.status}\nDocuments Processed: ${data.documents_processed}\nCanary F1 Score: ${data.canary_f1}`);
+  } catch (err) {
+    alert('Error running batch: ' + err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = originalText;
+    }
+  }
+}
+
+// Pre-load ledger on initial page load
+document.addEventListener('DOMContentLoaded', () => {
+  refreshLedger();
+});

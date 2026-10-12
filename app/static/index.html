@@ -200,10 +200,16 @@
     <div id="tab-ledger" class="tab-pane">
       <div class="card">
         <div class="card-title">
-          <span>Run Ledger Audit Trail</span>
-          <button class="btn-secondary" onclick="refreshLedger()">Refresh Ledger</button>
+          <span>Run Ledger Audit Trail (Pipeline Spine)</span>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn-primary" id="btn-run-batch" onclick="triggerBatchRun()">Run Batch Pipeline</button>
+            <button class="btn-secondary" onclick="refreshLedger()">Refresh Ledger</button>
+          </div>
         </div>
-        <div class="card-subtitle">Chronological record of batch runs, watermark progress, documents processed vs parked, and canary F1 scores.</div>
+        <div class="card-subtitle">
+          <strong>Purpose:</strong> Chronological record of automated bulk runs, watermark progress, document counts, and canary F1 scores.<br/>
+          <em>Note:</em> Tab 1 processes individual receipts interactively. Tab 3 logs <strong>batch pipeline runs</strong> (e.g. nightly queues or folder drops). Click <strong>"Run Batch Pipeline"</strong> to execute an automated batch run through the Canary Quality Gate.
+        </div>
 
         <div class="table-wrap">
           <table>

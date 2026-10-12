@@ -161,3 +161,16 @@ async def get_run_ledger(
         }
         for r in runs
     ]
+
+
+@api_router.post("/ledger/trigger-batch", tags=["Pipeline Spine"])
+async def trigger_batch_run():
+    """Trigger a batch ingestion run through the pipeline spine and canary gate."""
+    from app.pipeline.batch import run_batch_pipeline
+    sample_files = [
+        ("batch_inv_alpha.pdf", b"%PDF-1.4 sample content alpha"),
+        ("batch_inv_beta.pdf", b"%PDF-1.4 sample content beta"),
+        ("batch_inv_gamma.pdf", b"%PDF-1.4 sample content gamma"),
+    ]
+    result = await run_batch_pipeline(sample_files)
+    return result
