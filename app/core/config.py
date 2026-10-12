@@ -49,7 +49,8 @@ if HAS_PYDANTIC_SETTINGS:
         CANARY_SAMPLE_SIZE: int = 50
         CANARY_MAX_F1_DROP: float = 2.0
         MAX_PARK_RATE: float = 0.03
-        LEASE_TIMEOUT_SECONDS: int = 300
+        # LLM Provider Configuration
+        GEMINI_API_KEY: Optional[str] = None
 
         EXTRACTOR_VERSION: str = "v1.0.0"
         PROMPT_VERSION: str = "v1"
@@ -86,7 +87,8 @@ else:
         CANARY_SAMPLE_SIZE: int = int(os.getenv("CANARY_SAMPLE_SIZE", "50"))
         CANARY_MAX_F1_DROP: float = float(os.getenv("CANARY_MAX_F1_DROP", "2.0"))
         MAX_PARK_RATE: float = float(os.getenv("MAX_PARK_RATE", "0.03"))
-        LEASE_TIMEOUT_SECONDS: int = int(os.getenv("LEASE_TIMEOUT_SECONDS", "300"))
+        # LLM Provider Configuration
+        GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")
 
         EXTRACTOR_VERSION: str = os.getenv("EXTRACTOR_VERSION", "v1.0.0")
         PROMPT_VERSION: str = os.getenv("PROMPT_VERSION", "v1")
