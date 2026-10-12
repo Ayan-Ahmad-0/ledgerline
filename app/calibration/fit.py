@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from typing import Optional
 from sklearn.linear_model import LogisticRegression
@@ -110,6 +111,8 @@ def run_holdout_calibration(
     # 3. Calculate ECE with 10 equal-mass bins
     raw_ece = compute_ece_equal_mass(test_raw_conf, test_labels, num_bins=num_bins)
     calibrated_ece = compute_ece_equal_mass(test_calibrated_conf, test_labels, num_bins=num_bins)
+    if os.getenv("FAULT_CALIBRATION") == "1":
+        calibrated_ece = 0.45  # Break-It Fault: Injects severe calibration distortion
 
     meets_target = calibrated_ece <= target_ece
 

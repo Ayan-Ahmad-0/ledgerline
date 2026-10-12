@@ -40,7 +40,17 @@ dev = [
 requires = ["setuptools>=68.0.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.mutmut]
+paths_to_mutate = "app/validate/math.py,app/extract/stitch.py,app/timefiscal/fiscal.py,app/calibration/ece.py"
+backup = false
+runner = "pytest"
+tests_dir = "tests"
+
 

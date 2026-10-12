@@ -1,0 +1,46 @@
+name: Break-It Branches & Fault Testing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  breakit-fault-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Run Break-It Fault Suite
+        run: |
+          pytest tests/test_breakit.py -v
+
+      - name: Assert Stitching Fault Goes Red
+        run: |
+          FAULT_MULTI_PAGE_STITCH="1" pytest tests/test_phase4_stitching_math.py -k "test_multi_page_table_stitching_drops_repeated_headers" && exit 1 || echo "Stitching test successfully went RED under fault."
+
+      - name: Assert Calibration Fault Goes Red
+        run: |
+          FAULT_CALIBRATION="1" pytest tests/test_phase5_calibration_routing.py -k "test_holdout_calibration_meets_ece_target" && exit 1 || echo "Calibration test successfully went RED under fault."
+
+      - name: Assert Idempotency Fault Goes Red
+        run: |
+          FAULT_IDEMPOTENCY="1" pytest tests/test_phase5_calibration_routing.py -k "test_page_level_caching_makes_zero_network_calls_on_rerun" && exit 1 || echo "Idempotency test successfully went RED under fault."
+
+      - name: Assert Canary Gate Fault Goes Red
+        run: |
+          FAULT_CANARY_GATE="1" pytest tests/test_phase7_pipeline_api.py -k "test_canary_quality_gate_fails_and_alerts_on_f1_drop" && exit 1 || echo "Canary quality gate test successfully went RED under fault."

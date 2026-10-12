@@ -1,3 +1,4 @@
+import os
 import hashlib
 import re
 from dataclasses import dataclass, field
@@ -97,6 +98,8 @@ def compute_header_fingerprint(tokens: list[str]) -> str:
 
 def is_matching_header(row_tokens: list[str], target_fingerprint: str, target_tokens: list[str]) -> bool:
     """Check exact fingerprint match or high token Jaccard overlap (>= 80%)."""
+    if os.getenv("FAULT_MULTI_PAGE_STITCH") == "1":
+        return False  # Break-It Fault: Never recognize repeated running headers
     if not row_tokens:
         return False
     if compute_header_fingerprint(row_tokens) == target_fingerprint:

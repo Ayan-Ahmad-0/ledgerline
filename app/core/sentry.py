@@ -1,12 +1,19 @@
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+import logging
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def init_sentry() -> None:
     settings = get_settings()
-    if settings.SENTRY_DSN:
+    if not settings.SENTRY_DSN:
+        return
+
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
         sentry_sdk.init(
             dsn=settings.SENTRY_DSN,
             environment=settings.ENV,
@@ -17,3 +24,7 @@ def init_sentry() -> None:
             ],
             send_default_pii=False,
         )
+        logger.info("Sentry initialized successfully")
+    except ImportError:
+        logger.warning("sentry-sdk is not installed; running without Sentry tracking")
+

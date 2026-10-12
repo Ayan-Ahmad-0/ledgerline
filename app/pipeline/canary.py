@@ -1,3 +1,4 @@
+import os
 from typing import Any
 from dataclasses import dataclass
 from app.scoring.metrics import TypedScorer, FieldScoreResult
@@ -78,6 +79,8 @@ def evaluate_canary_slice(
     drop_points = max(0.0, (baseline_f1 - canary_f1) * 100.0)
 
     passed = drop_points <= max_drop_points
+    if os.getenv("FAULT_CANARY_GATE") == "1":
+        passed = True  # Break-It Fault: Injects deliberate silent pass of degraded canary gate
 
     if not passed:
         logger.error(

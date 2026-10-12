@@ -1,3 +1,4 @@
+import os
 import hashlib
 import json
 import re
@@ -84,7 +85,7 @@ class LLMAdapter:
         cache_key = make_cache_key(page_hash, ext_ver, pmt_ver)
 
         # Check page-level cache (Directive #5: exactly 0 network calls on re-run)
-        if cache_key in _PAGE_EXTRACTION_CACHE:
+        if os.getenv("FAULT_IDEMPOTENCY") != "1" and cache_key in _PAGE_EXTRACTION_CACHE:
             cached_result, cached_metrics = _PAGE_EXTRACTION_CACHE[cache_key]
             cache_hit_metrics = LLMCallMetrics(
                 routing_path="cache_hit",

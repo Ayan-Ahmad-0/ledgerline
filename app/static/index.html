@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ledgerline | Financial Extraction & Audit Pipeline</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="brand">
+      <span>LEDGERLINE</span>
+      <span class="brand-badge">Pipeline Engine</span>
+    </div>
+    <div class="nav-links">
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        <span>Local Host Operational: 8000</span>
+      </div>
+      <a href="/docs" target="_blank" class="nav-link">API Docs (Swagger)</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    
+    <!-- Tab Controls -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" onclick="switchTab('tab-extract')">📄 Live Extractor & Math Audit</button>
+      <button class="tab-btn" onclick="switchTab('tab-reviews')">⚖️ Human Review Queue (Leases)</button>
+      <button class="tab-btn" onclick="switchTab('tab-ledger')">📊 Pipeline Spine & Run Ledger</button>
+      <button class="tab-btn" onclick="switchTab('tab-calibration')">🎯 Calibration & Quality Gate</button>
+    </div>
+
+    <!-- TAB 1: Live Extractor -->
+    <div id="tab-extract" class="tab-pane active">
+      <div class="grid-2">
+        <!-- Left: Upload Card -->
+        <div class="card">
+          <div class="card-title">
+            <span>Document Ingestion Dropzone</span>
+            <span class="badge badge-cache">X-API-Key Enabled</span>
+          </div>
+          <div class="card-subtitle">
+            Upload digital native PDF or scanned receipt image. Automatically routes via cheap layout vs multimodal vision model.
+          </div>
+
+          <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+            <div class="dropzone-icon">📥</div>
+            <div class="dropzone-text" id="file-name-display">Drop invoice PDF or image here, or browse</div>
+            <div class="dropzone-hint">Supports PDF, PNG, JPG (Auto-Deduplicated with SHA-256)</div>
+            <input type="file" id="file-input" style="display: none" accept=".pdf,.png,.jpg,.jpeg">
+          </div>
+
+          <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem;">
+            <button class="btn-primary" id="extract-btn" onclick="performExtraction()">Extract & Validate Math</button>
+            <button class="btn-secondary" onclick="loadSampleInvoice()">Load Sample Invoice</button>
+          </div>
+        </div>
+
+        <!-- Right: Real-time Cost & Routing Meter -->
+        <div class="card">
+          <div class="card-title">
+            <span>Cost Meter & Smart Routing Audit</span>
+            <span id="route-badge" class="badge badge-cheap">Path: Ready</span>
+          </div>
+          <div class="card-subtitle">Monitors real-time inference routing, tokens, and USD cost per document page.</div>
+
+          <div class="grid-3" style="margin-bottom: 1.25rem;">
+            <div class="metric-box">
+              <div class="metric-label">Estimated Cost</div>
+              <div class="metric-value" id="metric-cost">$0.0000</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Tokens (In / Out)</div>
+              <div class="metric-value" id="metric-tokens">0 / 0</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Latency</div>
+              <div class="metric-value" id="metric-latency">0 ms</div>
+            </div>
+          </div>
+
+          <div class="metric-box">
+            <div class="metric-label">Math Consistency Rule</div>
+            <div id="math-status" style="font-weight: 600; color: var(--green); font-size: 0.95rem;">
+              ✓ Rule: SUM(qty * unit_price) == subtotal (±1.00 unit)
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Extracted Results Card -->
+      <div class="card" id="results-card" style="display: none;">
+        <div class="card-title">
+          <span>Extracted Structured Fields</span>
+          <span class="badge badge-cache" id="idempotency-badge">0 Duplicate Calls on Re-Run</span>
+        </div>
+        
+        <div class="grid-4" style="margin-bottom: 1.5rem;">
+          <div class="metric-box">
+            <div class="metric-label">Vendor Name</div>
+            <div id="res-vendor" style="font-weight: 700; color: #fff;">-</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Invoice Number</div>
+            <div id="res-inv-num" style="font-family: var(--font-mono); color: #fff;">-</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Invoice Date</div>
+            <div id="res-date" style="font-family: var(--font-mono); color: #fff;">-</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Total Amount</div>
+            <div id="res-total" style="font-size: 1.4rem; font-weight: 800; color: var(--cyan);">-</div>
+          </div>
+        </div>
+
+        <div class="card-title" style="font-size: 0.95rem; margin-bottom: 0.75rem;">Stitched Line Items Table</div>
+        <div class="table-wrap">
+          <table id="line-items-table">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Quantity</th>
+                <th>Unit Price</th>
+                <th>Line Total</th>
+              </tr>
+            </thead>
+            <tbody id="line-items-body">
+              <!-- Rendered items -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Review Queue & Leases -->
+    <div id="tab-reviews" class="tab-pane">
+      <div class="card">
+        <div class="card-title">
+          <span>Human Review Queue (Optimistic Concurrency & Leases)</span>
+          <button class="btn-primary" onclick="leaseNextItem()">Lease Next Item (SKIP LOCKED)</button>
+        </div>
+        <div class="card-subtitle">
+          Acquires row-level locks safely using <code>SELECT FOR UPDATE SKIP LOCKED</code>. Enforces optimistic concurrency (returns HTTP 409 diff on collision).
+        </div>
+
+        <div id="lease-active-box" style="display: none; margin-bottom: 1.5rem;" class="metric-box">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <div>
+              <span class="badge badge-vision" id="lease-status-pill">STATUS: LEASED</span>
+              <span style="margin-left: 0.5rem; font-size: 0.85rem; color: var(--text-muted);" id="lease-item-id">Item ID: -</span>
+            </div>
+            <div>
+              <span class="badge badge-cache" id="lease-version">Version: 1</span>
+            </div>
+          </div>
+
+          <div class="grid-2" style="margin-bottom: 1rem;">
+            <div>
+              <div class="metric-label">Proposed Server State</div>
+              <pre id="proposed-json">{ "total": "100.00" }</pre>
+            </div>
+            <div>
+              <div class="metric-label">Human Correction Input</div>
+              <textarea id="correction-json" style="width: 100%; height: 180px; background: #030712; border: 1px solid var(--border); color: #fff; border-radius: 8px; padding: 0.75rem; font-family: var(--font-mono); font-size: 0.85rem;">{
+  "total": "105.00",
+  "notes": "Verified against receipt"
+}</textarea>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem;">
+            <button class="btn-primary" onclick="submitReviewAction('approved')">Submit & Increment Version</button>
+            <button class="btn-secondary" onclick="simulate409Conflict()" style="border-color: var(--amber); color: var(--amber);">Simulate 409 Conflict Test</button>
+          </div>
+        </div>
+
+        <div id="review-status-msg" style="color: var(--text-muted); font-size: 0.875rem;">
+          No active review lease held. Click "Lease Next Item" to acquire one.
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: Pipeline Spine & Run Ledger -->
+    <div id="tab-ledger" class="tab-pane">
+      <div class="card">
+        <div class="card-title">
+          <span>Run Ledger Audit Trail</span>
+          <button class="btn-secondary" onclick="refreshLedger()">Refresh Ledger</button>
+        </div>
+        <div class="card-subtitle">Chronological record of batch runs, watermark progress, documents processed vs parked, and canary F1 scores.</div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Run ID</th>
+                <th>Started At</th>
+                <th>Status</th>
+                <th>Watermark</th>
+                <th>Processed</th>
+                <th>Parked</th>
+                <th>Canary F1</th>
+              </tr>
+            </thead>
+            <tbody id="ledger-body">
+              <tr>
+                <td colspan="7" style="text-align: center; color: var(--text-muted);">Loading ledger history...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: Calibration & Quality Gate -->
+    <div id="tab-calibration" class="tab-pane">
+      <div class="card">
+        <div class="card-title">
+          <span>Confidence Calibration & Canary Quality Gate Inspector</span>
+          <span class="badge badge-cheap">Target: ECE ≤ 0.10</span>
+        </div>
+        <div class="card-subtitle">
+          Audits Platt scaling baseline vs. Multi-Signal Isotonic Regression calibration on held-out layout and vendor data.
+        </div>
+
+        <div class="grid-3" style="margin-bottom: 1.5rem;">
+          <div class="metric-box">
+            <div class="metric-label">Holdout Calibrated ECE</div>
+            <div class="metric-value" style="color: var(--green);">0.089</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Target ≤ 0.10 (10 Equal-Mass Bins)</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Raw Uncalibrated ECE</div>
+            <div class="metric-value" style="color: var(--red);">0.284</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Severe LLM Overconfidence</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Canary Max Allowed Drop</div>
+            <div class="metric-value" style="color: var(--cyan);">2.0 pts</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">50-Doc Gate Slice Guard</div>
+          </div>
+        </div>
+
+        <div class="metric-box">
+          <div class="metric-label">Calibration Signals Extracted</div>
+          <p style="font-size: 0.85rem; color: var(--text-main);">
+            1. <strong>OCR Character Confidence</strong> (Tesseract character probability)<br>
+            2. <strong>Token Probability</strong> (Raw LLM generative probability)<br>
+            3. <strong>Layout Geometry</strong> (Relative vertical and horizontal bounding coordinates)<br>
+            4. <strong>Math Validation Outcome</strong> (Boolean equality of line item sum to subtotal)<br>
+            5. <strong>Two-Pass Agreement</strong> (Conditional validation agreement between extraction runs)
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

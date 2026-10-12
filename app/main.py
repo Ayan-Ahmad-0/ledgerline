@@ -1,4 +1,9 @@
+import os
+from pathlib import Path
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.core.sentry import init_sentry
@@ -20,12 +25,21 @@ app = FastAPI(
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(RequestMetricsMiddleware)
 
-# Register routers
+# Mount static files
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+# Register API routers
 app.include_router(api_router)
 
 
-@app.get("/")
-async def root():
+@app.get("/", include_in_schema=False)
+async def serve_dashboard():
+    """Serve the local Ledgerline web UI dashboard."""
+    index_file = Path(__file__).parent / "static" / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
     return {
         "project": settings.PROJECT_NAME,
         "status": "operational",
