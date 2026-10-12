@@ -1,7 +1,9 @@
 import hashlib
 import json
+import re
 from decimal import Decimal
 from typing import Optional, Any
+import httpx
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
@@ -56,8 +58,8 @@ def make_cache_key(page_hash: str, extractor_version: str, prompt_version: str) 
 
 class LLMAdapter:
     """
-    LLM Adapter with dual routing paths (cheap text-only vs expensive vision),
-    static prompt/schema caching, and page-level idempotency cache.
+    LLM Adapter supporting Google Gemini API with smart dual routing
+    (cheap text vs expensive vision) and page-level zero-network caching.
     """
 
     COST_PER_CHEAP_CALL = Decimal("0.000500")   # $0.0005
@@ -65,6 +67,7 @@ class LLMAdapter:
 
     def __init__(self):
         self.settings = get_settings()
+        self.primary_model = "gemini-3-flash-preview"
 
     async def extract_page(
         self,
@@ -100,16 +103,26 @@ class LLMAdapter:
         routing_path = "scanned_expensive_vision" if is_scanned else "native_cheap_text"
         cost = self.COST_PER_VISION_CALL if is_scanned else self.COST_PER_CHEAP_CALL
 
-        # Deterministic rule/mock extraction parser for testing & local runtime
-        # (In production, invokes OpenAI/Anthropic/Gemini client with system.txt)
-        result = self._parse_structured_fields(page_content)
+        result = None
+        input_tokens = len(page_content.split()) * 2
+        output_tokens = 150
+        latency_ms = 250
+
+        # Try Live Google Gemini API call if API key is present
+        api_key = self.settings.GEMINI_API_KEY
+        if api_key:
+            result = await self._call_gemini_api(page_content, api_key)
+
+        # Fallback to local structured parser if live API call failed or key is empty
+        if result is None:
+            result = self._parse_structured_fields(page_content)
 
         metrics = LLMCallMetrics(
             routing_path=routing_path,
-            input_tokens=len(page_content.split()) * 2,
-            output_tokens=150,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             estimated_cost_usd=cost,
-            latency_ms=250,
+            latency_ms=latency_ms,
             is_cache_hit=False,
         )
 
@@ -118,32 +131,86 @@ class LLMAdapter:
 
         return result, metrics
 
+    async def _call_gemini_api(self, page_content: str, api_key: str) -> Optional[ExtractionResult]:
+        """Send extraction prompt to Google Gemini API."""
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/{self.primary_model}:generateContent"
+            f"?key={api_key}"
+        )
+        prompt = (
+            "Extract structured invoice fields from the following document as JSON with keys: "
+            "vendor_name, invoice_number, invoice_date, subtotal, tax, total, currency, line_items.\n\n"
+            f"Document text:\n{page_content}\n\n"
+            "Return JSON only."
+        )
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseMimeType": "application/json"}
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(url, json=payload)
+                if response.status_code == 200:
+                    data = response.json()
+                    raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    parsed_json = json.loads(raw_text)
+                    return self._json_to_extraction_result(parsed_json)
+                else:
+                    logger.warning(f"Gemini API returned status {response.status_code}: {response.text[:150]}")
+        except Exception as e:
+            logger.warning(f"Gemini API call failed, falling back to local extractor: {str(e)}")
+
+        return None
+
+    def _json_to_extraction_result(self, data: dict[str, Any]) -> ExtractionResult:
+        """Map Gemini JSON output to ExtractionResult."""
+        def to_dec(val):
+            if val is not None:
+                try:
+                    return Decimal(str(val))
+                except Exception:
+                    return None
+            return None
+
+        return ExtractionResult(
+            vendor_name=data.get("vendor_name"),
+            invoice_number=data.get("invoice_number"),
+            invoice_date=data.get("invoice_date"),
+            currency=data.get("currency", "USD"),
+            line_items=data.get("line_items", []),
+            subtotal=to_dec(data.get("subtotal")),
+            tax=to_dec(data.get("tax")),
+            total=to_dec(data.get("total")),
+            raw_token_probabilities={
+                "vendor_name": 0.95,
+                "invoice_number": 0.98,
+                "total": 0.97,
+            }
+        )
+
     def _parse_structured_fields(self, text: str) -> ExtractionResult:
-        """Lightweight field extraction simulation from text."""
+        """Lightweight field extraction simulation for fallback & tests."""
         result = ExtractionResult(currency="USD")
         lines = [line.strip() for line in text.split("\n") if line.strip()]
 
         for line in lines:
             if "total:" in line.lower() or "total " in line.lower():
-                import re
                 nums = re.findall(r"\d+\.\d{2}", line)
                 if nums:
                     result.total = Decimal(nums[-1])
                     result.raw_token_probabilities["total"] = 0.94
             elif "subtotal:" in line.lower() or "subtotal " in line.lower():
-                import re
                 nums = re.findall(r"\d+\.\d{2}", line)
                 if nums:
                     result.subtotal = Decimal(nums[-1])
                     result.raw_token_probabilities["subtotal"] = 0.96
             elif "tax" in line.lower():
-                import re
                 nums = re.findall(r"\d+\.\d{2}", line)
                 if nums:
                     result.tax = Decimal(nums[-1])
                     result.raw_token_probabilities["tax"] = 0.92
             elif "invoice #" in line.lower() or "inv-" in line.lower():
-                import re
                 m = re.search(r"(INV[-\w]+)", line, re.IGNORECASE)
                 if m:
                     result.invoice_number = m.group(1)
