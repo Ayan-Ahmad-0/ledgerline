@@ -1,0 +1,28 @@
+[
+  {
+    "input": "ACME INDUSTRIAL SUPPLIES LLC\nInvoice #: INV-2024-001\nDate: 2024-03-15\nItem | Qty | Rate | Amount\nSteel Fasteners | 10 | $5.00 | $50.00\nHeavy Duty Bolts | 4 | $12.50 | $50.00\nSubtotal: $100.00\nTax (8%): $8.00\nTotal: $108.00 USD",
+    "output": {
+      "vendor_name": "ACME INDUSTRIAL SUPPLIES LLC",
+      "invoice_number": "INV-2024-001",
+      "invoice_date": "2024-03-15",
+      "currency": "USD",
+      "line_items": [
+        {
+          "description": "Steel Fasteners",
+          "quantity": 10.0,
+          "unit_price": 5.0,
+          "line_total": 50.0
+        },
+        {
+          "description": "Heavy Duty Bolts",
+          "quantity": 4.0,
+          "unit_price": 12.5,
+          "line_total": 50.0
+        }
+      ],
+      "subtotal": 100.0,
+      "tax": 8.0,
+      "total": 108.0
+    }
+  }
+]
