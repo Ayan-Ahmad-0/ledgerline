@@ -1,6 +1,6 @@
 # Ledgerline Automated Invoice Extraction Pipeline
 
-Ledgerline is an automated pipeline for invoice and receipt extraction, emphasizing mathematically validated data, calibrated confidence routing, and append-only auditability. It enforces a strict subtotal consistency rule ($\sum \text{qty} \times \text{unit\_price} \equiv \text{subtotal} \pm 1.00$), bounds out-of-distribution Expected Calibration Error ($\text{ECE} \le 0.10$), and guarantees zero duplicate LLM network invocations on re-runs.
+Ledgerline is an automated pipeline for invoice and receipt extraction, emphasizing mathematically validated data, calibrated confidence routing, and append-only auditability. It enforces a strict subtotal consistency rule ($\sum \text{qty} \times \text{unit price} \equiv \text{subtotal} \pm 1.00$), bounds out-of-distribution Expected Calibration Error ($\text{ECE} \le 0.10$), and guarantees zero duplicate LLM network invocations on re-runs.
 
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue?style=flat&logo=python)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.111.0-009688?style=flat&logo=fastapi)
@@ -14,9 +14,9 @@ Ledgerline is an automated pipeline for invoice and receipt extraction, emphasiz
 ## 📋 Overview
 
 1. **Ingest** PDF and image documents via drop folder or REST API with Sha256 content deduplication.
-2. **Classify** pages into digital native text (cheap path at $0.0005/page) vs. raster scans (multimodal vision path at $0.015/page).
+2. **Classify** pages into digital native text (cheap path at \$0.0005/page) vs. raster scans (multimodal vision path at \$0.015/page).
 3. **Stitch** multi-page tabular boundaries using 1D x-interval clustering and drop repeated running headers via normalized token hashing.
-4. **Validate** arithmetic consistency ($\sum \text{quantity} \times \text{unit\_price} \equiv \text{subtotal} \pm 1.00$); park failures directly to dead-letter tables with zero dirty writes.
+4. **Validate** arithmetic consistency ($\sum \text{quantity} \times \text{unit price} \equiv \text{subtotal} \pm 1.00$); park failures directly to dead-letter tables with zero dirty writes.
 5. **Calibrate** confidence scores using multi-signal Isotonic Regression with Platt scaling baseline, guaranteeing out-of-distribution $\text{ECE} \le 0.10$.
 6. **Manage** human review workflows with row-level leases (`SELECT FOR UPDATE SKIP LOCKED`) and optimistic concurrency (HTTP 409 diffs).
 7. **Guard** batch runs with a 50-document canary gate that aborts the pipeline if macro-$F_1$ drops by $> 2.0$ points against the rolling baseline.
