@@ -417,13 +417,23 @@ def get_engine():
 
 async def init_db():
     """Initializes tables in database if running on SQLite or fresh instance."""
+    global _engine, _session_factory
     engine = get_engine()
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"Database table initialization warning: {e}")
+        logging.getLogger(__name__).warning(f"Database connection warning ({e}), falling back to SQLite...")
+        _engine = create_async_engine("sqlite+aiosqlite:///ledgerline_dev.db", echo=get_settings().DEBUG)
+        _session_factory = sessionmaker(
+            bind=_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autoflush=False,
+        )
+        async with _engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
 
 def get_session_factory():
