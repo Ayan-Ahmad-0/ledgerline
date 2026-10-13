@@ -51,15 +51,6 @@ Raw Document (PDF/Image) ──► Ingress Guardrails ──► Smart Router ─
 - **ML / Calibration**: Scikit-Learn Isotonic Regression and Logistic Regression (Platt scaling).
 - **CI / CD**: GitHub Actions with Break-It fault injection testing and mutmut mutation testing.
 
----
-
-## Extraction Audit & Review UI
-
-<!-- Add: images/ledgerline_extraction_demo.png -->
-![Ledgerline Extraction Demo](images/ledgerline_extraction_demo.png)
-
-<!-- Add: images/review_queue_diff.png -->
-![Review Queue Collision Diff](images/review_queue_diff.png)
 
 ---
 
@@ -116,8 +107,6 @@ Evaluated across two isolated benchmarks:
 | CORD Receipts (Line items & Math) | 1,000 docs | 0.912 | 580 ms | $0.0078 | 0.094 |
 
 <!-- Add: images/calibration_reliability_diagram.png -->
-![Calibration Reliability Diagram](images/calibration_reliability_diagram.png)
-
 **Instructive Failure & Resolution**: When table rows split across page boundaries on multi-page invoices, running table headers on subsequent pages were initially parsed as regular line items, corrupting the subtotal math sum by hundreds of dollars. The failure was resolved by implementing normalized token SHA-256 fingerprinting (`compute_header_fingerprint`), which detects recurring header structures on Page 2+ and drops them before cell interval clustering.
 
 ---
