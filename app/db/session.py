@@ -96,7 +96,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    file_hash = Column(String(64), nullable=False, index=True)
+    file_hash = Column(String(64), nullable=False)
     r2_storage_key = Column(String(512), nullable=False)
     file_name = Column(String(255), nullable=False)
     file_size_bytes = Column(Integer, nullable=False)
@@ -129,7 +129,7 @@ class Page(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     page_number = Column(Integer, nullable=False)
-    page_hash = Column(String(64), nullable=False, index=True)
+    page_hash = Column(String(64), nullable=False)
     is_native_text = Column(Boolean, default=True, nullable=False)
     raw_text = Column(Text, nullable=True)
     layout_metadata = Column(JSONB, nullable=True)
@@ -163,7 +163,7 @@ class ExtractionVersion(Base):
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     extractor_version = Column(String(50), nullable=False)
     prompt_version = Column(String(50), nullable=False)
-    idempotency_key = Column(String(128), nullable=False, index=True)
+    idempotency_key = Column(String(128), nullable=False)
 
     valid_from = Column(
         DateTime(timezone=True),
