@@ -11,7 +11,7 @@ Ledgerline is an automated pipeline for invoice and receipt extraction, emphasiz
 
 ---
 
-## 📋 Overview
+## Overview
 
 1. **Ingest** PDF and image documents via drop folder or REST API with Sha256 content deduplication.
 2. **Classify** pages into digital native text (cheap path at \$0.0005/page) vs. raster scans (multimodal vision path at \$0.015/page).
@@ -25,7 +25,7 @@ Measured across 45 automated unit tests and benchmarked against 1,000 CORD recei
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 Raw Document (PDF/Image) ──► Ingress Guardrails ──► Smart Router ──► Table Stitcher ──► Math Validator ──► Calibrator ──► Neon PostgreSQL / R2
 
@@ -53,7 +53,7 @@ Raw Document (PDF/Image) ──► Ingress Guardrails ──► Smart Router ─
 
 ---
 
-## 📊 Extraction Audit & Review UI
+## Extraction Audit & Review UI
 
 <!-- Add: images/ledgerline_extraction_demo.png -->
 ![Ledgerline Extraction Demo](images/ledgerline_extraction_demo.png)
@@ -63,7 +63,7 @@ Raw Document (PDF/Image) ──► Ingress Guardrails ──► Smart Router ─
 
 ---
 
-## 🔄 Pipeline Flow
+## Pipeline Flow
 
 ```
 Document Ingest
@@ -102,7 +102,7 @@ Document Ingest
 
 ---
 
-## ✅ Evaluation Results
+## Evaluation Results
 
 Evaluated across two isolated benchmarks:
 1. **Synthetic Multi-Layout Benchmark**: 8 distinct invoice layouts generated with `reportlab` and `Faker`, degraded to 150 DPI with skew, shadow, and Gaussian noise. Scored on Vendor, Date, and Math.
@@ -122,7 +122,7 @@ Evaluated across two isolated benchmarks:
 
 ---
 
-## 🗂️ Database Schema
+## Database Schema
 
 | Table Name | Primary Purpose | Key Columns / Constraints |
 |---|---|---|
@@ -139,7 +139,7 @@ Evaluated across two isolated benchmarks:
 
 ---
 
-## 🔒 Reliability & Key Design Decisions
+## Reliability & Key Design Decisions
 
 - **Append-Only Time Travel** — Extraction results are never overwritten in-place. The `extraction_versions` table maintains `valid_from` and `valid_to` timestamps, allowing temporal `as_of(timestamp)` audit queries.
 - **Optimistic Concurrency & Collision Diffs** — Human review conflicts return HTTP 409 Conflict alongside a calculated field-level diff (`compute_field_diff`) showing server state vs. submitted payload.
@@ -150,7 +150,7 @@ Evaluated across two isolated benchmarks:
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 ledgerline/
@@ -221,7 +221,7 @@ ledgerline/
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 Copy `.env.example` to `.env` and configure credentials:
 
@@ -263,7 +263,7 @@ PROMPT_VERSION="v1"
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Clone & Install
 ```bash
@@ -303,7 +303,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
-## 🚧 Challenges Solved
+## Challenges Solved
 
 - **Repeated Headers Corrupting Line Items** — *Symptom*: Multi-page consulting invoices produced line-item sums double the true subtotal. *Diagnosis*: Subsequent pages repeated table column headers, which were parsed as line-item text. *Fix*: Implemented token-hash fingerprinting (`compute_header_fingerprint`) that detects recurring headers across page splits and drops them prior to extraction.
 - **Overconfident Token Probabilities** — *Symptom*: Raw LLM token probabilities hovered at 0.95–0.99 even when field values were incorrect. *Diagnosis*: Language models exhibit severe overconfidence on structured outputs. *Fix*: Fit a multi-signal Isotonic Regression calibrator on held-out layout and vendor data, reducing out-of-distribution ECE from 0.28 to $\le 0.089$.
@@ -312,7 +312,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
-## 🛠️ Future Improvements
+## Future Improvements
 
 - **Webhooks & Event Streaming** — Dispatch Apache Kafka / Cloudflare Queue events upon batch completion and canary degradation alerts.
 - **Active Learning Queue** — Automatically surface unreviewed documents near the calibration decision boundary ($0.45 \le p \le 0.60$) directly to the top of human review queues.
