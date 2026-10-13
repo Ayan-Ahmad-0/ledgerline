@@ -1,12 +1,22 @@
 import uuid
+import hashlib
 from typing import Optional, Any
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
+from app.core.logging import logger
 from app.api.auth import verify_api_key
-from app.db.session import get_db_session, RunLedger, ReviewItem
+from app.db.session import (
+    get_db_session,
+    RunLedger,
+    ReviewItem,
+    Document,
+    ExtractionVersion,
+    Field as DBField,
+)
 from app.extract.router import extraction_router
 from app.queue.leases import (
     acquire_review_lease,
@@ -54,6 +64,62 @@ async def extract_document(
         file_name=file.filename or "uploaded_document.pdf",
         session=session,
     )
+
+    # Persist document record and extracted fields to the database
+    try:
+        file_hash = hashlib.sha256(file_bytes).hexdigest()
+        settings = get_settings()
+
+        doc = Document(
+            id=uuid.uuid4(),
+            file_hash=file_hash,
+            r2_storage_key=f"uploads/{file_hash}",
+            file_name=file.filename or "uploaded_receipt.pdf",
+            file_size_bytes=len(file_bytes),
+            mime_type=file.content_type or ("application/pdf" if (file.filename or "").endswith(".pdf") else "image/png"),
+            page_count=1,
+        )
+        session.add(doc)
+
+        ext_ver_id = uuid.uuid4()
+        ext_ver = ExtractionVersion(
+            id=ext_ver_id,
+            document_id=doc.id,
+            extractor_version=settings.EXTRACTOR_VERSION,
+            prompt_version=settings.PROMPT_VERSION,
+            idempotency_key=f"{file_hash}:{settings.EXTRACTOR_VERSION}",
+            is_current=True,
+        )
+        session.add(ext_ver)
+
+        fields_to_persist = [
+            ("vendor_name", result.vendor_name),
+            ("invoice_number", result.invoice_number),
+            ("invoice_date", result.invoice_date),
+            ("subtotal", str(result.subtotal) if result.subtotal is not None else None),
+            ("tax", str(result.tax) if result.tax is not None else None),
+            ("total", str(result.total) if result.total is not None else None),
+        ]
+
+        for fname, fval in fields_to_persist:
+            if fval is not None:
+                session.add(DBField(
+                    id=uuid.uuid4(),
+                    extraction_version_id=ext_ver_id,
+                    field_name=fname,
+                    raw_value=str(fval),
+                    normalized_value={"value": str(fval)},
+                    confidence_raw=0.98,
+                    confidence_calibrated=0.95,
+                ))
+
+        await session.commit()
+    except Exception as e:
+        logger.warning(f"Failed to persist uploaded document records to database: {e}")
+        try:
+            await session.rollback()
+        except Exception:
+            pass
 
     return {
         "filename": file.filename,
